@@ -1,4 +1,4 @@
-# Contribution: [Issue Title]
+# Contribution: ritest: Add support for stratified sampling
 
 Path: `beat-2-contribution/contribution-story.md`
 
@@ -8,11 +8,10 @@ format criteria grade exactly that. Your course repo link is the whole submissio
 files and no evidence uploads are part of Assignment 5.
 
 **Contribution Number:** [1]
-**Student:** [Student name]
-**GitHub Username:** [your GitHub username, exactly as it appears on your profile - no @, no
-profile URL. Your comments upstream are identified by this name.]
-**Issue:** [GitHub issue link]
-**Pull Request:** [GitHub PR link, once opened]
+**Student:** Sing Zheng
+**GitHub Username:** SingLZ
+**Issue:** https://github.com/py-econometrics/pyfixest/issues/459
+**Pull Request:** not opened yet
 
 One repository, built across units 5 to 8, telling the whole story of your real
 contribution. Fill it as you work, not at the end — the sections below ask for evidence that
@@ -55,10 +54,9 @@ happened; these entries are the toolkit's own timeline.
 All four entries are graded. Keep every heading below, and fill each
 one in the week it belongs to.
 
-**Unit 5: [one line on the tool work]**
+**Unit 5: Turned my Unit 1 grader into issue-scout and pointed it at C++/quant issues across all of GitHub**
 
-[2-4 sentences: what you built (the scout, your strategy), what broke
-or fell short, what changed because of it.]
+(2026-10-14) I installed the scout over my Unit 1 skill, rewrote my fit profile for C++ quant finance, and wrote two queries (QuantLib "help wanted" issues and a C++ keyword search); testing them by hand showed that OR terms inside one pair of quotes return 0 results and that `quant` and `options` pulled in ML quantization and settings menus, so I changed the keywords. My first scan rejected all five QuantLib bugs it graded because each already had an open PR, which the search results don't show, so I added `-linked:pr` to both queries and it removed 4 of the 5 when I re-ran it by hand. Grading my own picks, the scout called an Arrow PR that a bot had closed three days earlier "abandoned", so I patched my rubric's not-already-taken check to treat a PR auto-closed in the last 30 days as a live claim.
 
 **Unit 6: [one line on the tool work]**
 
