@@ -58,11 +58,9 @@ one in the week it belongs to.
 
 (2026-10-14) I installed the scout over my Unit 1 skill, rewrote my fit profile for C++ quant finance, and wrote two queries (QuantLib "help wanted" issues and a C++ keyword search); testing them by hand showed that OR terms inside one pair of quotes return 0 results and that `quant` and `options` pulled in ML quantization and settings menus, so I changed the keywords. My first scan rejected all five QuantLib bugs it graded because each already had an open PR, which the search results don't show, so I added `-linked:pr` to both queries and it removed 4 of the 5 when I re-ran it by hand. Grading my own picks, the scout called an Arrow PR that a bot had closed three days earlier "abandoned", so I patched my rubric's not-already-taken check to treat a PR auto-closed in the last 30 days as a live claim.
 
-**Unit 6: [one line on the tool work]**
+**Unit 6: Added an Upstream section to my voice guide, wired the voice guard as a hook, and wrote a CLAUDE.local.md for pyfixest**
 
-[2-4 sentences: the voice-guard, the repo-memory file. What broke or
-fell short, and what changed because of it. "Nothing broke" counts when
-it is true - say how you know.]
+(2026-10-21) I merged my three voice-guide copies into one, added rules for claims, questions and pings, installed the guard as a PreToolUse hook (the wiring test stopped `gh issue comment --help` as expected), and wrote a 33-line `CLAUDE.local.md` mapping `ritest()` -> `_resample` -> the tests, kept out of my diff with `.git/info/exclude`. Running the guard on the claim I had already posted stopped it on my own new rule, "never a PR date" ("I'm aiming to open a PR within about two weeks"). My first rewrite was then stopped for stating the gap as a result before I had run anything, and the third version passed both the guard and repro-check. Writing the memory file, I found my local clone pointed at upstream instead of my fork, so I re-pointed the remotes, and I noted that `_resample` is numba-compiled, so my change has to stay numba-compatible.
 
 **Unit 7: [one line on the tool work]**
 
@@ -78,24 +76,20 @@ drafted, what you did with the draft.]
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs in your own words: how you searched, what your scan
-surfaced, what your scout's verdict said, why this issue fits your
-profile, and what you hope to learn. If your scout's verdict on it
-was reject and you chose it anyway, say so here and say why; choosing
-against your own tool silently is what loses points. Close with an
-honest read of the tool itself: where the scout fell short on a real
-wild search and what you changed or would change, or what convinced
-you it held up. **Record the link to your claim comment in this section too.**
-Not claimed yet? Write `claim pending` and today's date where the link goes,
-and add the link the moment your claim lands.]
+I wanted my first contribution to be C++ quant finance, so I rewrote my fit profile around option pricing, order books and backtesting, and pointed my scout at QuantLib's "help wanted" issues plus a C++ keyword search. The first scan graded five QuantLib pricing bugs and rejected all five, because each already had an open PR from someone else. When I went through every issue on the Issue Selection site, the only finance projects were openalgo, where all 16 issues were already claimed (mostly by classmates), and pyfixest, a Python econometrics library. I graded pyfixest #459 directly and the scout accepted it: active maintainers who replied within hours, a `good first issue` label, and a body that names the function and test files. After this week's scope patch it rates it **straightforward**.
+
+My scout also flagged that #459 is a poor fit for my C++ quant profile, and I chose it anyway on purpose. It's Python, but the work is randomization inference (resampling a treatment to build a null distribution and a p-value), which is the same kind of statistics quant research runs on, and I'd rather ship a real PR in a well-run numerical library than wait for a C++ issue nobody has taken. I hope to learn how a project like this proves numerical code is right, since every change here has to be checked against R's `ritest`.
+
+Claim comment: https://github.com/py-econometrics/pyfixest/issues/459#issuecomment-6183148490 (the maintainer replied "Sounds great! I'll assign you to the issue").
+
+An honest read of the scout: its rubric was the reliable part, and my search strategy was the weak part. The rubric correctly rejected all five QuantLib issues and both openalgo picks for being taken, which the Issue Selection site didn't show. But my "fewest comments first" ranking pointed it straight at freshly filed issues that people had already jumped on, so I added `-linked:pr` to my queries. The rubric also had two real gaps on wild issues. It counted an Arrow PR that a bot had auto-closed three days earlier as "abandoned", and after I claimed #459 it rejected my own issue because it couldn't tell my claim from a stranger's. I patched both.
 
 **Toolkit**
 
-- Tool: issue-scout (your scout: your search strategy, your rubric),
-  and how you used it
-- What it produced: [the scan and its verdict on this issue, described]
-- Difficulties: [where it fell short, or "none met" if none did]
-- What changed: [what you patched or would update, or "nothing"]
+- Tool: issue-scout (my search strategy and my rubric). I ran one scan over C++/QuantLib queries, then graded my Issue Selection picks directly (arrow #30923, openalgo #1828 and #1831, pyfixest #459 and #463), and re-graded them after each rubric patch.
+- What it produced: the scan rejected all 5 QuantLib issues on not-already-taken. On #459 the verdicts went accept (10-14), then reject (10-21, on my own claim), then accept again after the fix, with all 8 checks passing and a difficulty note of straightforward.
+- Difficulties: search results don't show linked PRs, so my ranking surfaced already-taken issues. The rubric treated a bot-closed PR as abandoned and my own claim as a stranger's. The old `scope-one-change` check would have rejected any issue with an open design edge.
+- What changed: added `-linked:pr` to both queries (4 of 5 taken issues dropped out). Patched not-already-taken twice: a PR auto-closed in the last 30 days counts as live, and claims by SingLZ never block. Replaced `scope-one-change` with the staff `scope-feasible` row plus a difficulty note, keeping umbrella / standing-invitation / support-question as the only rejections and moving the other four disqualifiers into "ambitious".
 
 ---
 
