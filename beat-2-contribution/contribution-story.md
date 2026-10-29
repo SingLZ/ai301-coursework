@@ -62,10 +62,9 @@ one in the week it belongs to.
 
 (2026-10-21) I merged my three voice-guide copies into one, added rules for claims, questions and pings, installed the guard as a PreToolUse hook (the wiring test stopped `gh issue comment --help` as expected), and wrote a 33-line `CLAUDE.local.md` mapping `ritest()` -> `_resample` -> the tests, kept out of my diff with `.git/info/exclude`. Running the guard on the claim I had already posted, it stopped on my Unit 2 rule "No dates, no guarantees" because of "I'm aiming to open a PR within about two weeks". I decided the rule, not the claim, was wrong: the course asks claims for a realistic timeframe, and a hedged estimate isn't a guarantee, so I rewrote it as "Estimates, never guarantees" and made the same change in repro-check's claim-comment-specific check, after which my posted claim passed both. Writing the memory file, I found my local clone pointed at upstream instead of my fork, so I re-pointed the remotes, and I noted that `_resample` is numba-compiled, so my change has to stay numba-compatible.
 
-**Unit 7: [one line on the tool work]**
+**Unit 7: Installed the ship-gate, wrote a 3-check manifest for pyfixest, and ran it on my branch until it passed**
 
-[2-4 sentences: the ship-gate and your gate manifest. What it produced
-on your real branch, what fought you, what changed because of it.]
+(2026-10-28) My manifest runs pyfixest's lint, type check, and the targeted `test_ritest.py` suite with stored R comparisons. The full `test-py` suite went into the excluded table with a dated reason: it already fails on master (one torch test) and rewrites a tracked file. The gate's first run on `feat/ritest-strata` passed all three checks, but pr-precheck rejected the branch because my local `master` was a week stale and it diffed 29 unrelated commits. After I fast-forwarded `master`, it rejected again, correctly, because my R cases and tolerance had drifted from `plan.md` with no record; I added a Deviations section and the third run passed. The gate didn't catch one thing: my description's AI line said I ran every command myself, when Claude Code ran them. I fixed that by hand, because no check reads a sentence for whether it's true.
 
 **Unit 8: [one line on the tool work]**
 
@@ -97,26 +96,28 @@ An honest read of the scout: its rubric was the reliable part, and my search str
 
 **Problem Description**
 
-[In your own words, what is broken or missing?]
+pyfixest's `ritest()` runs randomization inference: it reshuffles the treatment many times to build the distribution of the estimate under "no effect", then asks how unusual the real estimate is. Many experiments are stratified (randomized separately inside blocks, like 25 of 50 people treated in each of 4 schools). For those, the reshuffle has to stay inside each block, or it describes a different experiment. `ritest()` had no way to say that: there was no `strata` option, unlike R's `ritest` and Stata's.
 
 **Expected Behavior**
 
-[What should happen?]
+`fit.ritest("D", strata="block")` should permute the treatment within each stratum, so every draw keeps each stratum's treated count (25/25/25/25 in my example), as R's `ritest(..., strata=)` does. With `cluster=` too, whole clusters should move within their stratum.
 
 **Current Behavior**
 
-[What actually happens?]
+On master (`51774c7d`), `ritest(strata=...)` raises `TypeError: Feols.ritest() got an unexpected keyword argument 'strata'`. Each draw shuffles the treatment over the whole sample, which keeps the total treated count (100) but not each stratum's: per-stratum counts ranged 15 to 36, and only 0.1% of 1000 draws kept 25 in every stratum.
 
 **Affected Components**
 
-[Which parts of the codebase are involved?]
+- `pyfixest/estimation/models/feols_.py`, `Feols.ritest()`: the public API and argument validation.
+- `pyfixest/estimation/post_estimation/ritest.py`: `_assignment_units()` and the two places a draw happens, the slow path (`_get_ritest_stats_slow`) and the numba-compiled fast path (`_run_ri`).
+- Tests: `tests/test_ritest.py`, and the R reference script `tests/r_test_comparisons.R` with its stored CSVs in `tests/data/`.
 
 **Toolkit**
 
-- Tool:
-- What it produced:
-- Difficulties:
-- What changed:
+- Tool: my `CLAUDE.local.md` memory file for pyfixest (Unit 6), plus Claude Code reading the `ritest` code with me.
+- What it produced: the call path `ritest()` -> slow/fast stats functions -> the draw step, and the test and R-reference files, without re-mapping the repo.
+- Difficulties: the memory file was a week out of date. It still pointed at `_resample`, which #1965 removed on Oct 24, so its subsystem section was wrong about where the change goes.
+- What changed: I traced the new code (`_assignment_units` and `rng.permutation(assignment)`) and wrote the affected components from it. The memory file's subsystem section needs the same update.
 
 ---
 
@@ -169,67 +170,110 @@ Challenges: my first `pixi run` rewrote `pixi.lock`, and the repo's rules say to
 
 **Analysis**
 
-[Your analysis of the root cause: what is causing the issue, traced
-to the files and functions involved.]
+`Feols.ritest()` (`pyfixest/estimation/models/feols_.py:2061`) has no `strata` argument; passing one raises `TypeError: Feols.ritest() got an unexpected keyword argument 'strata'`. Since #1965 (merged 2026-10-24), both algorithms draw the null distribution the same way: `_assignment_units()` (`pyfixest/estimation/post_estimation/ritest.py:248`) collapses the treatment to its units of assignment (observations, or clusters when `cluster` is set), and each draw is `rng.permutation(assignment)[unit_codes]`, in the slow path (`_get_ritest_stats_slow`, `ritest.py:91`) and in the numba-compiled fast path (`_run_ri`, `ritest.py:237`). That permutation runs over all units at once, so it keeps the total treated count but not each stratum's. My reproduction on master `51774c7d` (4 strata x 50 obs, 25 treated each, 1000 draws) shows each stratum's treated count ranging from 15 to 36, with only 0.1% of draws keeping 25/25/25/25. For a stratified (blocked) experiment that is the null distribution of the wrong design. R's `ritest(..., strata=)` permutes within strata.
 
 **Proposed Solution**
 
-[High-level description of your fix approach, and what you are
-deliberately NOT changing.]
+Add `strata: str | None = None` to `Feols.ritest()` and permute the treatment within each stratum, as R's `ritest` and Heß (2017, Stata Journal 17(3)) do.
+
+- In `ritest()`: validate `strata` at the API boundary with `ValueError` (column not in the data; missing values; with `cluster`, a cluster that spans more than one stratum, because whole clusters are permuted within strata). Factorize it to integer codes, and pass them to both algorithms. Report `res["Strata"]` the way `res["Cluster"]` is reported.
+- In `ritest.py`: add `_unit_strata()`, which maps the strata codes onto the assignment units from `_assignment_units()`, and a numba-compatible `_permute_within_strata(assignment, unit_strata, rng)`, which applies `rng.permutation` to each stratum's units. Call it at the two permutation sites (slow path and `_run_ri`) when strata are given.
+
+Deliberately NOT changed:
+
+- The no-strata path. It keeps calling `rng.permutation(assignment)` exactly as now, so the random stream, the existing results, the stored R comparisons, and the release contract are unchanged for every current call.
+- The position of existing parameters. `strata` goes last in the signature, so positional calls like `fit.ritest("X1", "group_id", 100)` keep working.
+- `_assignment_units()`'s signature and return value (it has its own test).
+- Weights (`ritest()` still rejects them; that's #463) and the `cluster` logic.
+- `pixi.lock`.
 
 **Implementation Plan**
 
-1. [Modify file X to do Y]
-2. [Add or change Z]
-3. [Update tests]
+1. `pyfixest/estimation/post_estimation/ritest.py`: add `_unit_strata()` and `_permute_within_strata()`; thread an optional `unit_strata` through `_get_ritest_stats_slow`, `_get_ritest_stats_fast` and `_run_ri`, using it at lines 91 and 237. Keep the new helper numba-compatible (`_run_ri` is `nb.njit`-compiled).
+2. `pyfixest/estimation/models/feols_.py`: add the `strata` parameter (last), its docstring and an example, the three `ValueError` checks, and pass the codes to both algorithms; add `res["Strata"]`.
+3. `tests/r_test_comparisons.R`: add a strata block in the file's current `do.call` style (data with complete rows, `stratum = group_id %% 3`, so the `group_id` clusters nest in strata; formulas `Y~X1+f3` and `Y~X1+f3|f1`; resampvars `X1`, `f3`; with and without `cluster = "group_id"`; `reps = 10000`, `seed = 123`), writing `tests/data/ritest_strata_results.csv`. Regenerate with `pixi run --frozen -e py312-r Rscript tests/r_test_comparisons.R` and confirm the existing `ritest_results.csv` comes out unchanged. Add the new CSV to the `_update-test-data` task outputs in `pyproject.toml`.
+4. `tests/test_ritest.py`: (a) `_permute_within_strata` keeps every stratum's treatment values (with and without clusters; whole clusters move together); (b) the three validation errors; (c) extended: slow and fast give the same statistics with the same seed; (d) extended: p-value, its SE and CI lower bound match R's stratified `ritest` within `rtol=atol=0.005`, the tolerance `test_vs_r` uses, because 10,000 R draws vs 4,000 pyfixest draws differ by Monte Carlo error. On master, (a) cannot import `_permute_within_strata` and (b) fails with `TypeError` for `strata`, so both fail without the change. (`store_ritest_statistics` stores only the statistics, not the draws, so per-draw counts are checked on the helper rather than through `ritest()`.)
+5. `docs/changelog.qmd`: one entry linking #459. `docs/contributing.qmd`: mention the new CSV that `_update-test-data` produces.
+6. Re-run my reproduction on the branch, expecting `ritest(strata=...)` to run and every draw to keep 25/25/25/25 (100% of 1000 draws), then the manifest checks (`lint`, `ty`, targeted `tests/test_ritest.py` in `py312-r`) and `test-py` by hand. Save the before/after output and the check results in `test_evidence.md`.
 
-[Record deviations here as they happen: what changed mid-build and
-why. A recorded deviation is honest work; silent drift is not.]
+Not verified yet: that `rng.permutation` on each stratum's subset compiles under `nb.njit` inside `_run_ri` (master already calls `rng.permutation(assignment)` there, so I expect it to). If it doesn't, I'll draw a permutation of indices instead.
+
+Open question for the maintainer (in the PR, not blocking): R's `ritest` also accepts `strata` together with `cluster`. I support that only when clusters nest in strata, and raise `ValueError` otherwise.
+
+Deviations (recorded while building, 2026-10-28):
+
+1. **R reference cases (step 3).** The plan named resampvars `X1` and `f3` with and without `cluster = "group_id"`. Since #1965, `ritest()` raises `ValueError` when the treatment varies within clusters, so permuting `X1` or `f3` by `group_id` is no longer allowed. The R block now mirrors master's own `test_vs_r` cases: `X1` and `D_unit` without clusters, `D_cluster` with `group_id` clusters, each for `Y~...+f3` and `Y~...+f3|f1` (6 cases, still `reps = 10000`, `seed = 123`, `stratum = group_id %% 3`).
+2. **Tolerance (step 4d).** The plan said `rtol=atol=0.005` with 4,000 pyfixest draws, "as `test_vs_r` uses". Master's `test_vs_r` has since moved to 10,000 draws and a Monte Carlo tolerance (4 standard errors of the difference of two 10,000-draw estimates, plus 1e-3), so `test_ritest_strata_vs_r` uses that same rule and 10,000 draws.
+3. **No `f3` resampling case and no `|f1+f2` formula** in the strata comparison, to keep the R run short (6 cases); master's non-strata cases still cover them.
 
 **Toolkit**
 
-- Tool:
-- What it produced:
-- Difficulties:
-- What changed:
+- Tool: plan-check, grading `plan.md` and a short plan comment (`plan-comment.md`, not posted) against #459.
+- What it produced: accept on the first run, all six required checks passing. It verified my cited lines (`ritest.py:91` and `:237`) and that #1965 had merged. It also flagged three weak spots: a "stored draw" test that can't be written through the public API (`store_ritest_statistics` keeps only statistics, not draws), no expected result for the repro re-run, and an untested assumption that `rng.permutation` compiles under numba.
+- Difficulties: it said my plan-check skill had no `voice-guide.md`, so it skipped the voice pass, but the file is there as a symlink to my canonical guide. The tool seems not to follow the link. Its warning that my local `master` was stale turned out to matter a lot later, in the ship-gate.
+- What changed: I dropped the impossible test, added the expected result (25/25/25/25 in 100% of draws) and the numba question to the plan. When the build differed from the plan, I recorded it under Deviations instead of quietly changing the plan.
 
 ---
 
 ## Testing Strategy
 
-[What observable checks prove the fix: your reproduction steps re-run
-against the built change (before and after), and the repo's own test
-suite or checks with the outcome shown. "Tests pass" with nothing
-observable named is not a strategy.]
+1. **Re-run the reproduction, before and after.** Same design (4 strata x 50 obs, 25 treated each, seed 459, 1000 draws). On master `51774c7d`: `ritest(strata='s')` raises `TypeError`, per-stratum treated counts range 15 to 36, and 0.1% of draws keep 25 in every stratum. On my branch: `ritest(strata='s')` runs, and every stratum has exactly 25 treated in 100% of draws.
+2. **New tests that fail without the change.** 15 tests in `tests/test_ritest.py`: within-strata permutation keeps each stratum's values, with and without clusters, and whole clusters move together (2); the three `ValueError` cases: missing column, missing values, a cluster spanning strata (1); slow and fast algorithms give the same statistics from the same seed (6); and a comparison with R's stratified `ritest` on 6 cases with 10,000 draws, using the same Monte Carlo tolerance as the repo's `test_vs_r` (6). Run against unmodified master, the file fails with `ImportError: cannot import name '_permute_within_strata'`.
+3. **External reference.** pyfixest's testing policy requires numerical changes to be checked against existing software, so I added a strata block to `tests/r_test_comparisons.R` and regenerated the data with `pixi run --frozen -e py312-r _update-test-data`. The existing `ritest_results.csv` came out byte-for-byte unchanged, which shows my R setup reproduces master's stored numbers.
+4. **The repo's own checks (my ship manifest):** `pixi run --frozen lint` passed, `pixi run --frozen ty` passed (`All checks passed!`), and `pixi run --frozen -e py312-r pytest tests/test_ritest.py -q --no-cov` gave `105 passed` (90 on master, plus 15).
+5. **Full Python suite, run by hand:** `pixi run --frozen test-py` gave `4979 passed, 1 failed` on the branch vs `4976 passed, 1 failed` on master. The one failure is the same torch-backend test on both (the optional `torch` extra isn't installed), and the +3 are my new non-extended tests.
+6. **Unchanged behavior without strata.** The no-strata path still calls `rng.permutation(assignment)`, so master's 90 existing ritest tests, including the stored R comparisons, pass unchanged.
 
 **Toolkit**
 
-- Tool:
-- What it produced:
-- Difficulties:
-- What changed:
+- Tool: my ship manifest (`ship-manifest.md`), run by the ship-gate, plus the repro script from Unit 6 re-pointed at the branch's draw step.
+- What it produced: the before/after table above and `test_evidence.md` (lint, ty, 105 targeted tests, and the `test-py` comparison).
+- Difficulties: `test-py` already fails on master (one torch test), takes 6 to 8 minutes, and rewrites a tracked file (`tests/texfiles/test.tex`) when it runs, so it can't sit in the must-pass table. My first `pixi run` also rewrote `pixi.lock` (a pixi version reformat), which pyfixest only accepts for intentional dependency changes.
+- What changed: `test-py` went into the manifest's excluded table with a dated reason, and I ran it by hand on both master and the branch to compare. Every command now uses `pixi run --frozen`, and I restored the lock file.
 
 ---
 
 ## Implementation Notes
 
-[A running log, added to as you work. Date each entry. What you
-built, decisions you made when you made them, wrong turns included.]
+**2026-10-24**
 
-**[Date]**
+First draft of the fix on my branch, on the code as of Oct 21: a `strata` argument with validation, a numba-compatible `_permute_within_strata` inside `_resample`, tests, and an R reference block. Not committed.
 
-[Entry]
+**2026-10-28**
 
-**[Date]**
+Reproducing showed master had moved: #1965 (merged Oct 24) removed `_resample` and now permutes the observed assignment. My draft edited a function that no longer existed. I saved the draft on a local backup branch (`wip/ritest-strata-pre1965`) instead of discarding it, reset `feat/ritest-strata` to current master, and ported the idea onto the new code: `_unit_strata()` maps strata onto assignment units, and `_permute_within_strata()` permutes each stratum, called at the two draw sites.
 
-[Entry]
+**2026-10-28**
+
+Decisions while building:
+- I put `strata` last in the signature so `fit.ritest("X1", "group_id", 100)` still works.
+- I left the no-strata path as `rng.permutation(assignment)` so every existing seed gives the same numbers.
+- I passed `None` into the numba-compiled `_run_ri` when there are no strata, and checked numba compiles both versions.
+
+The smoke test showed 25/25/25/25 in all 1000 draws, through the compiled helper.
+
+**2026-10-28**
+
+Wrong turn: calling `Rscript tests/r_test_comparisons.R` directly failed (`No module named 'pandas'`) because reticulate picked the system Python. The repo's own `_update-test-data` task sets `RETICULATE_PYTHON`, and it worked (about 6 minutes).
+
+Also, my old draft's R cases (permuting `X1` by cluster) are now illegal on master, which rejects a treatment that varies within clusters. I switched to master's cases (`X1`, `D_unit`, `D_cluster`) and its Monte Carlo tolerance, and recorded both as plan deviations.
+
+**2026-10-28**
+
+Two commits:
+- `test(ritest): add stratified R ritest reference data`
+- `feat(ritest): permute the treatment within strata`
+
+The ship-gate's first run rejected the branch: my local `master` was a week stale, so pr-precheck diffed 29 unrelated commits. I fast-forwarded `master` to upstream. The second run rejected it because the R cases and tolerance differed from the plan without a Deviations section. I added one, and the third run passed.
+
+I also corrected my PR description's AI line, which wrongly said I had run every command myself; Claude Code ran them on my machine.
 
 **Toolkit**
 
-- Tool:
-- What it produced:
-- Difficulties:
-- What changed:
+- Tool: Claude Code in my pyfixest clone, with `CLAUDE.local.md` and the repo's own `AGENTS.md`, plus git branches for safety.
+- What it produced: the port onto post-#1965 code, two commits split by reviewer concern, and a backup branch holding my first draft.
+- Difficulties: the upstream rewrite under my issue, a stale local `master`, a lock file that pixi rewrote on its own, and an R command that only works through the repo's task.
+- What changed: I now fetch upstream before building, use `--frozen` for every pixi command, and run R through `_update-test-data`. My memory file should say all three.
 
 ---
 
