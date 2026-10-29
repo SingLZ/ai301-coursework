@@ -124,31 +124,44 @@ An honest read of the scout: its rubric was the reliable part, and my search str
 
 **Environment Setup**
 
-[What a stranger would need to stand this up: your operating system,
-the relevant versions (language, runtime, package manager, the project
-itself), and how you set the project up. Then the challenges you faced
-and how you solved them, or that none came up.]
+- macOS 26.6.2 on arm64 (Apple Silicon), zsh.
+- pyfixest master at commit `51774c7d` (2026-10-28), checked out as a clean `git worktree` of `upstream/master` with no local changes. It reports `pyfixest 0.60.0` because master hasn't been released past v0.60.0.
+- pixi 0.83.0 (pyfixest's package manager; the repo needs >= 0.71.0), environment `py312`: Python 3.12.12, numpy 2.4.2. Setup: fork and clone pyfixest, `brew install pixi`, then any `pixi run` builds the environment, including the Rust extension.
+
+Challenges: my first `pixi run` rewrote `pixi.lock`, and the repo's rules say to change it only for intentional dependency changes, so I now run everything with `pixi run --frozen` and will keep the lock file out of my PR. My working branch also already had my in-progress changes on it, so I reproduced on a separate clean worktree of master instead of stashing them. The biggest surprise was that master had moved: #1965 (merged 2026-10-24) removed `_resample`, the function the issue and my claim pointed at, and replaced it with a permutation of the observed assignment, so I reproduced against the new code.
 
 **Steps to Reproduce**
 
-1. [Step 1]
-2. [Step 2]
-3. [Observed result]
+1. Check out pyfixest master at `51774c7d` (`git worktree add --detach ~/pyfixest-master upstream/master`).
+2. Run a short script (`repro_459.py`) with `pixi run --frozen -e py312 python -I repro_459.py`. It builds a stratified experiment with 4 strata x 50 observations and exactly 25 treated per stratum (seed 459), fits `feols("Y ~ D | s")`, and calls `fit.ritest(resampvar="D", strata="s")`.
+3. It then makes 1000 draws using the exact step `ritest()`'s slow and fast paths use on master, `rng.permutation(assignment)[unit_codes]` from `_assignment_units`, and counts treated units per stratum in each draw. A stratified test should keep 25 treated in every stratum (R's `ritest(..., strata=)` permutes within strata).
+4. Observed: `ritest(strata=...)` raises `TypeError`, and per-stratum treated counts swing from 15 to 36, so only 0.1% of draws keep 25 in every stratum.
 
 **Reproduction Evidence**
 
-- **Commit showing reproduction:** [link to commit in your fork]
-- **Screenshots/logs:** [if applicable]
-- **My findings:** [what you discovered during reproduction; an
-  honest, evidenced cannot-reproduce that led you to re-pick or ask
-  the maintainer belongs here and costs you nothing]
+- **Commit showing reproduction:** none (the script lives outside the repo and ran on unmodified upstream commit `51774c7d`).
+- **Screenshots/logs:** output excerpt:
+
+  ```
+  ritest parameters: ['resampvar', 'cluster', 'reps', 'type', 'rng', 'choose_algorithm', 'store_ritest_statistics', 'level']
+  1. ritest(strata='s') -> TypeError: Feols.ritest() got an unexpected keyword argument 'strata'
+  2. total treated per draw: min 100 max 100
+     observed treated per stratum: [25, 25, 25, 25]
+     stratum 0: treated count over 1000 draws min=16 max=36 mean=25.0; draws keeping exactly 25: 12.2%
+     stratum 1: treated count over 1000 draws min=15 max=34 mean=25.0; draws keeping exactly 25: 12.4%
+     stratum 2: treated count over 1000 draws min=15 max=34 mean=25.2; draws keeping exactly 25: 14.5%
+     stratum 3: treated count over 1000 draws min=17 max=35 mean=24.8; draws keeping exactly 25: 13.4%
+     draws keeping 25 in ALL strata: 0.1%
+  ```
+
+- **My findings:** The gap is real on today's code. The public API rejects `strata`, and the permutation keeps the total treated count fixed (100 in every draw) but not the per-stratum counts, so `ritest()` builds the null distribution of a completely randomized design, not a stratified one. Because #1965 removed `_resample`, the plan in my claim ("resample within strata in `_resample`") is out of date. From reading the code (not tested yet), I think the change now belongs in `_assignment_units` and the two `rng.permutation(assignment)` call sites. Not checked yet: R's `ritest` output on the same data, and the `cluster` path, which uses the same permutation over cluster units.
 
 **Toolkit**
 
-- Tool:
-- What it produced:
-- Difficulties:
-- What changed:
+- Tool: repro-check, grading my claim (`claim-draft.md`, the text I posted on Oct 15) and my repro report (`repro-draft.md`) together, now with the wild scope instead of the sandbox one.
+- What it produced: the first run rejected the pair, failing steps-rerunnable because my report said "Save `repro_459.py` (below)" but never included the script, and flagged that I stated the fix location as fact. The second run accepted with all 7 checks passing, and it verified the commit, PR #1965, and both permutation call sites on its own.
+- Difficulties: the issue's 2024 file pointer no longer existed, so I had to work out what "reproducing a feature request" means on code that had changed under the issue. It also confirmed that my unposted claim revision shouldn't be posted, since its Friday date had passed and its `_resample` question was outdated.
+- What changed: I embedded the full script in a `<details>` block, reworded the fix location as "From reading the code (not tested yet), I think…", and added the note above that my claimed plan changes because of #1965.
 
 ---
 
