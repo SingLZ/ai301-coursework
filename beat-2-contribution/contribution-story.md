@@ -11,7 +11,7 @@ files and no evidence uploads are part of Assignment 5.
 **Student:** Sing Zheng
 **GitHub Username:** SingLZ
 **Issue:** https://github.com/py-econometrics/pyfixest/issues/459
-**Pull Request:** not opened yet
+**Pull Request:** https://github.com/py-econometrics/pyfixest/pull/2014
 
 One repository, built across units 5 to 8, telling the whole story of your real
 contribution. Fill it as you work, not at the end — the sections below ask for evidence that
@@ -279,27 +279,27 @@ I also corrected my PR description's AI line, which wrongly said I had run every
 
 ## Pull Request
 
-**PR Link:** [GitHub PR URL when opened]
+**PR Link:** https://github.com/py-econometrics/pyfixest/pull/2014 (opened 2026-10-28 as a draft, as pyfixest asks for AI-assisted work)
 
-**PR Description:** [what the PR says; much of the content above
-adapts into it]
+**PR Description:** Title "feat(ritest): support stratified randomization inference". It follows pyfixest's PR template (Summary, Verification):
+- What it adds: `strata` in `ritest()`, permuting the treatment within each stratum the way R's `ritest(..., strata=)` does. With `cluster=`, whole clusters move within strata, and a cluster spanning strata raises `ValueError`. The no-strata path is unchanged, so existing results and seeds don't move.
+- `Fixes #459`, and a note that the issue's `_resample` pointer was replaced by #1965.
+- One open question for the maintainer: R also allows clusters that span strata.
+- Verification: the before/after repro (per-stratum balance 0.1% -> 100% of draws), lint/ty/105 ritest tests passing, the new tests failing on master, the R comparison, and `test-py` matching master's one unrelated torch failure.
+- An AI-use line saying I used Claude Code to port my earlier draft and write the tests and the R block, and that I reviewed and understand the change.
 
 **Maintainer Feedback:**
 
-- [Date]: [feedback received, or "none yet"; silence is a normal
-  state and costs you nothing]
-- [Date]: [how you addressed it]
+- 2026-10-28: none yet (PR just opened as a draft).
 
-**Status:** [Awaiting review / Iterating / Merged / Closed. The
-status is a fact you record, never a grade: the PR is graded as
-opened.]
+**Status:** Awaiting review
 
 **Toolkit**
 
-- Tool:
-- What it produced:
-- Difficulties:
-- What changed:
+- Tool: the ship-gate (Unit 7), running my 3-check manifest plus my pr-precheck before the PR opens, and my voice guard on the description.
+- What it produced: 5 runs. Run 1 rejected: my local `master` was stale, so pr-precheck diffed 29 unrelated commits. Run 2 rejected: the R cases and tolerance had drifted from `plan.md` with no Deviations section. Run 3 passed. Run 4, through the hook when opening the PR, stopped on `ai-disclosure` because my AI line didn't say I understand the change. Run 5 passed, and the PR opened through the hook.
+- Difficulties: the gate fingerprints the description, so every wording edit meant a fresh run (about 90 seconds of tests plus a pr-precheck call). It also can't tell whether a sentence is true: my first AI line said I ran every command myself, which passed every check.
+- What changed: fast-forwarded `master` before gating, added Deviations to my plan, corrected the AI line by hand, and added a sentence saying I understand the change.
 
 ---
 
